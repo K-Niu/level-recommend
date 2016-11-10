@@ -1,0 +1,92 @@
+---
+title: "Walkthrough"
+author: "Kelvin Niu"
+date: "August 19, 2016"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Introduction
+This document will walk through how to run the Rasch model (discussed [here](http://kelvinniu.com/level_recommendations/binomial_rasch_model.html)) code on simulated game data.
+
+## Simulating game data
+The following code will simulate gameplay data for a game with a custom number of levels and students. Pick either a binomial (fail/pass) game or a multinomial (fail/pass/excel) game to simulate. Once the data is simulated, two csvs will be written to the working directory containing the true level difficulties (levelDifficultiesTrue.csv) and student abilities (studentAbilitiesTrue.csv). These csvs can be compared to the model estimates to evaluate model performance.
+```{r simulate, eval=FALSE}
+source('simulate_data.R')
+#Simulate data for a fail/pass game with 20 levels and 1000 students
+game.data <- simulate_data_binomial(20, 1000)
+#Simulate data for a fail/pass/excel with 20 levels and 1000 students
+game.data <- simulate_data_multinomial(20, 1000)
+```
+We can see the data contains four columns: a student ID column (student), a level number column (level), a result type column (result), and a timestamp column (timestamp).
+```{r format, eval=FALSE}
+head(game.data)
+```
+The student ID column, level number column, and result type column are necessary for the model code to run. The timestamp column is necessary to create the student recommendations plots for the binomial model.
+
+## Running the binomial model
+For the binomial model, we must specify what level outcome name is considered a "fail" and what level outcome name is considered a "pass". After the model runs, we can visualize the level difficulty estimates. The visualization function will also write the estimated level difficulties out to the working directory as levelDifficulties.csv.
+```{r binomial, eval=FALSE}
+source('run_rasch_binomial.R')
+#Run binomial Rasch model
+result <- run_rasch_binomial(game.data, fail = "0", pass = "1")
+
+source('plot_level_estimates.R')
+#Plot estimated level difficulties
+plot_level_estimates(result$gamma.mat)
+```
+We can now estimate the ability of a new student based on that student's game play data.
+```{r binomialability, eval=FALSE}
+library(dplyr)
+source('calculate_ability_binomial.R')
+#Get student 1's data as an example
+student.data <- game.data %>%
+  filter(student == 1)
+#Read in level difficulty estimates
+level.difficulties <- read.csv('levelDifficulties.csv')
+#Estimate student's ability
+estimate <- estimate.ability(student.data, level.difficulties, fail = "0", pass = "1")
+#Estimate the error on the ability estimate
+error <- estimate.error.numeric(student.data, level.difficulties, estimate, fail = "0", pass = "1")
+#Iteratively estimate student ability on increasing subsets of student play data
+estimates <- estimate.ability.iterative(student.data, level.difficulties, fail = "0", pass = "1")
+errors <- estimate.error.iterative(student.data, level.difficulties, estimates, fail = "0", pass = "1")
+
+source('plot_student_recommendations.R')
+#Plot a student recommendation (for levels within 50-75% probability of passing) chart based on student play data
+plot_level_recommendations(student.data, level.difficulties, fail = "0", pass = "1", lower.prob = 0.5, upper.prob = 0.75)
+```
+
+## Running the multinomial model
+For the multinomial model, we must specify what level outcome name is considered a "fail", what level outcome name is considered a "pass", and what level outcome name is considered an "excel". After the model runs, we can visualize the level difficulty estimates. The visualization function will also write the estimated level difficulties out to the working directory as levelDifficulties.csv.
+```{r multinomial, eval=FALSE}
+source('run_rasch_multinomial.R')
+#Run multinomial Rasch model
+result <- run_rasch_multinomial(game.data, fail = "1", pass = "2", excel = "3")
+
+source('plot_level_estimates.R')
+#Plot estimated level difficulties
+plot_level_estimates(result$gamma.mat)
+#Get tau value
+tau <- result$tau
+```
+We can now estimate the ability of a student based on a student's game play data.
+```{r multinomialability, eval=FALSE}
+library(dplyr)
+source('calculate_ability_binomial.R')
+#Get student 1's data as an example
+student.data <- game.data %>%
+  filter(student == 1)
+#Read in level difficulty estimates
+level.difficulties <- read.csv('levelDifficulties.csv')
+#Estimate student's ability
+estimate <- estimate.ability(student.data, level.difficulties, tau, fail = "1", pass = "2", excel = "3")
+#Estimate the error on the ability estimate
+error <- estimate.error.numeric(student.data, level.difficulties, tau, estimate, fail = "1", pass = "2", excel = "3")
+#Iteratively estimate student ability on subsets of student play data
+estimates <- estimate.ability.iterative(student.data, level.difficulties, tau, fail = "1", pass = "2", excel = "3")
+errors <- estimate.error.iterative(student.data, level.difficulties, tau, estimates, fail = "1", pass = "2", excel = "3")
+```
